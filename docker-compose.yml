@@ -1,0 +1,72 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: email-parser
+    command: ["python", "-m", "app.service"]
+    volumes:
+      # Mount source code for development (hot reload)
+      - ./src:/app/src
+      # Mount credentials directory (read-only for security)
+      # Note: Token refresh will work in memory but won't be saved to disk.
+      # This is safe - tokens will work until expiration, then re-authorization is needed.
+      - ./credentials:/app/credentials
+      # Mount logs directory if needed
+      - ./logs:/app/logs
+    ports:
+      - "${HEALTH_CHECK_PORT:-8080}:8080"
+    environment:
+      # Disable Python bytecode caching for development
+      - PYTHONDONTWRITEBYTECODE=1
+      # Load from .env file
+      - GOOGLE_SHEETS_TOKEN=${GOOGLE_SHEETS_TOKEN:-./credentials/token_sheets.json}
+      - GOOGLE_GMAIL_TOKEN=${GOOGLE_GMAIL_TOKEN:-./credentials/token_gmail.json}
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID}
+      - SHEET_WORKSHEET=${SHEET_WORKSHEET:-Applications}
+      - START_ROW=${START_ROW:-2}
+      - GMAIL_POINTER_KEY=${GMAIL_POINTER_KEY:-gmail:last_processed_id}
+      - GMAIL_QUERY=${GMAIL_QUERY:--in:spam -in:trash}
+      - GMAIL_BATCH_LIMIT=${GMAIL_BATCH_LIMIT:-200}
+      - USE_REDIS=${USE_REDIS:-false}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_DB=${REDIS_DB:-0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=${LOG_FILE:-/app/logs/app.log}
+      - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
+      - SCHEDULER_INTERVAL=${SCHEDULER_INTERVAL:-300}
+      - HEALTH_CHECK_ENABLED=${HEALTH_CHECK_ENABLED:-true}
+      - HEALTH_CHECK_PORT=${HEALTH_CHECK_PORT:-8080}
+    networks:
+      - service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: email-parser-redis
+    ports:
+    - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
+
+networks:
+  service:
+    driver: bridge
