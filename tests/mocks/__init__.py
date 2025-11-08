@@ -1,0 +1,4 @@
+"""
+Mock objects for testing.
+"""
+
