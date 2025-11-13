@@ -96,28 +96,40 @@ def create_pipeline_wrapper(cfg):
             logger.info(f"Classification: approve={count_approve}, decline={count_decline}, review={count_review}")
             
             # ---- 6) Update Google Sheets
-            if count_approve or count_decline:
-                from app.sheets.writer import update_sheet_statuses
-                update_sheet_statuses(
-                    sheets=sheets,
-                    sheet_id=current_cfg["SHEET_ID"],
-                    sheet_tab=current_cfg["SHEET_TAB"],
-                    results=classified,
-                )
-                logger.info(f"Updated {count_approve + count_decline} statuses in column C")
+            # Track if any updates were successful to advance pointer
+            updates_successful = False
             
-            if count_review:
-                from app.sheets.writer import update_sheet_review
-                update_sheet_review(
-                    sheets=sheets,
-                    sheet_id=current_cfg["SHEET_ID"],
-                    sheet_tab=current_cfg["SHEET_TAB"],
-                    results=classified,
-                )
-                logger.info(f"Updated {count_review} review flags in column B")
-            
-            # Advance pointer after successful processing
-            gmail.advance_pointer_after_processing(storage, head_id, pointer_key=current_cfg["POINTER_KEY"])
+            try:
+                if count_approve or count_decline:
+                    from app.sheets.writer import update_sheet_statuses
+                    update_sheet_statuses(
+                        sheets=sheets,
+                        sheet_id=current_cfg["SHEET_ID"],
+                        sheet_tab=current_cfg["SHEET_TAB"],
+                        results=classified,
+                    )
+                    logger.info(f"Updated {count_approve + count_decline} statuses in column C")
+                    updates_successful = True
+                
+                if count_review:
+                    from app.sheets.writer import update_sheet_review
+                    update_sheet_review(
+                        sheets=sheets,
+                        sheet_id=current_cfg["SHEET_ID"],
+                        sheet_tab=current_cfg["SHEET_TAB"],
+                        results=classified,
+                    )
+                    logger.info(f"Updated {count_review} review flags in column B")
+                    updates_successful = True
+            finally:
+                # Always advance pointer after processing emails, even if sheet update failed
+                # This prevents re-processing the same emails on next run
+                # Emails were already processed (classified), so we should advance pointer
+                gmail.advance_pointer_after_processing(storage, head_id, pointer_key=current_cfg["POINTER_KEY"])
+                if updates_successful:
+                    logger.info("[POINTER] Pointer advanced after successful sheet updates")
+                else:
+                    logger.warning("[POINTER] Pointer advanced after email processing (sheet update may have failed)")
             
         except Exception as e:
             logger.exception(f"Pipeline execution failed: {e}")

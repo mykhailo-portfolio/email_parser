@@ -51,8 +51,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: email-parser-redis
-    ports:
-    - "6380:6379"
     volumes:
       - redis-data:/data
     networks:

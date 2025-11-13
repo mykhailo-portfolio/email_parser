@@ -412,20 +412,35 @@ class GmailClient:
           - If marker exists: stop as soon as the marker appears (exclusive).
         """
         marker = storage.get(pointer_key)
+        logger.info(f"[POINTER] collect_new_messages_once called with limit={limit}, pointer_key={pointer_key}")
+        logger.info(f"[POINTER] Current marker from storage: {marker}")
 
         ids, seen_marker = self._list_until_marker(limit=limit, marker_id=marker, query=query)
+        logger.info(f"[POINTER] Found {len(ids)} messages, seen_marker: {seen_marker}")
+        if ids:
+            logger.info(f"[POINTER] First message ID: {ids[0]}, Last message ID: {ids[-1]}")
+        if marker:
+            logger.info(f"[POINTER] Looking for marker: {marker}")
         
         if not ids:
             head_probe, _ = self._list_until_marker(limit=1, marker_id=None, query=query)
             head_id = head_probe[0] if head_probe else ""
+            # If no new messages but marker exists, keep the marker as head_id to prevent advancing
+            if not head_id and marker:
+                head_id = marker
+                logger.info(f"[POINTER] No new messages, keeping existing marker as head_id: {head_id}")
+            elif head_id:
+                logger.info(f"[POINTER] No new messages, but found head message: {head_id}")
             return [], head_id, (False if marker is None else not seen_marker)
 
         head_id = ids[0]
 
         if marker is None and head_id:
             storage.set(pointer_key, head_id)
+            logger.info(f"[POINTER] First run: set initial marker to {head_id}")
 
         has_more = not seen_marker if marker else False
+        logger.info(f"[POINTER] Returning {len(ids)} IDs, head_id={head_id}, has_more={has_more}")
         return ids, head_id, has_more
 
     def advance_pointer_after_processing(
@@ -448,4 +463,13 @@ class GmailClient:
                 "gmail:last_processed_id".
         """
         if head_id:
+            old_marker = storage.get(pointer_key)
             storage.set(pointer_key, head_id)
+            logger.info(f"[POINTER] Updated: {old_marker} -> {head_id}")
+            # Verify the update
+            verify_marker = storage.get(pointer_key)
+            logger.info(f"[POINTER] Verification: marker in storage is now: {verify_marker}")
+            if verify_marker != head_id:
+                logger.error(f"[POINTER] WARNING: Pointer update failed! Expected {head_id}, got {verify_marker}")
+        else:
+            logger.warning(f"[POINTER] Cannot update pointer: head_id is empty")

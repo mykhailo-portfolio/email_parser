@@ -114,9 +114,12 @@ def main() -> None:
         logger.info(f"Classification: approve={count_approve}, decline={count_decline}, review={count_review}")
 
         # ---- 6) Update Google Sheets
-        if count_approve or count_decline:
-            from app.sheets.writer import update_sheet_statuses
-            try:
+        # Track if any updates were successful
+        updates_successful = False
+        
+        try:
+            if count_approve or count_decline:
+                from app.sheets.writer import update_sheet_statuses
                 update_sheet_statuses(
                     sheets=sheets,
                     sheet_id=cfg["SHEET_ID"],
@@ -124,13 +127,10 @@ def main() -> None:
                     results=classified,
                 )
                 logger.info(f"Updated {count_approve + count_decline} statuses in column C")
-            except Exception as e:
-                logger.error(f"Failed to update sheet statuses: {e}")
-                raise
+                updates_successful = True
 
-        if count_review:
-            from app.sheets.writer import update_sheet_review
-            try:
+            if count_review:
+                from app.sheets.writer import update_sheet_review
                 update_sheet_review(
                     sheets=sheets,
                     sheet_id=cfg["SHEET_ID"],
@@ -138,12 +138,16 @@ def main() -> None:
                     results=classified,
                 )
                 logger.info(f"Updated {count_review} review flags in column B")
-            except Exception as e:
-                logger.error(f"Failed to update sheet review flags: {e}")
-                raise
-
-        # Advance pointer after successful processing
-        gmail.advance_pointer_after_processing(storage, head_id, pointer_key=cfg["POINTER_KEY"])
+                updates_successful = True
+        finally:
+            # Always advance pointer after processing emails, even if sheet update failed
+            # This prevents re-processing the same emails on next run
+            # Emails were already processed (classified), so we should advance pointer
+            gmail.advance_pointer_after_processing(storage, head_id, pointer_key=cfg["POINTER_KEY"])
+            if updates_successful:
+                logger.info("[POINTER] Pointer advanced after successful sheet updates")
+            else:
+                logger.warning("[POINTER] Pointer advanced after email processing (sheet update may have failed)")
 
     except Exception as e:
         logger.exception(f"Pipeline execution failed: {e}")

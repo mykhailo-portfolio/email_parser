@@ -5,7 +5,6 @@ Provides structured logging with file rotation and console output.
 """
 
 from __future__ import annotations
-import sys
 from pathlib import Path
 from loguru import logger
 
@@ -37,6 +36,7 @@ def setup_logging(
         console_level = "WARNING" if log_file else log_level
 
     # Console handler with color (only warnings and errors if file logging is enabled)
+    import sys
     logger.add(
         sys.stderr,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
@@ -47,16 +47,31 @@ def setup_logging(
     # File handler (if specified) - logs everything at specified level
     if log_file:
         log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.add(
-            log_path,
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level=log_level,
-            rotation=rotation,
-            retention=retention,
-            compression="zip",
-            encoding="utf-8",
-        )
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            # Test write access
+            test_file = log_path.parent / ".log_test"
+            test_file.touch()
+            test_file.unlink()
+            
+            logger.add(
+                log_path,
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                level=log_level,
+                rotation=rotation,
+                retention=retention,
+                compression="zip",
+                encoding="utf-8",
+                catch=True,  # Catch exceptions in logging handler
+            )
+            # Log to console that file logging is enabled
+            import sys
+            print(f"Logging to file: {log_path}", file=sys.stderr)
+        except Exception as e:
+            # If file logging fails, log to console and continue
+            import sys
+            print(f"WARNING: Failed to setup file logging to {log_path}: {e}", file=sys.stderr)
+            print("Continuing with console logging only", file=sys.stderr)
 
 
 # Export logger instance for use throughout the application

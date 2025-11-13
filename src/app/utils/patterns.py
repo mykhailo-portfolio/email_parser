@@ -61,6 +61,7 @@ PHRASES_POS: list[str] = [
 # ---------------------------
 PHRASES_NEG: list[str] = [
     # EN — decline/stop signals
+    "We decided to move forward with another candidate",
     "we regret to inform you",
     "we are sorry to inform you",
     "we're sorry to inform you",
